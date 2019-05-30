@@ -1,0 +1,80 @@
+---
+title: "Oil Price Analysis"
+output: html_notebook
+author: "Vic Chan"
+---
+
+```{r}
+library(ggplot2)
+library(TSA)
+library(plotly)
+data("oil.price")
+```
+
+
+Creating a time series without seasons trend
+```{r}
+oil = as.vector(oil.price)
+
+oil.data = data.frame(price = oil, time = 1:length(oil))
+ggplot(data=oil.data, aes(x=time, y =price)) + geom_point() + geom_line()
+```
+```{r}
+lm1 = lm(data = oil.data, price~time)
+
+lm1.data = data.frame(dif = diff(resid(lm1)), time = 1:length(diff(resid(lm1))))
+
+ggplot(data = lm1.data, aes(x = time, y = dif)) + geom_point() + geom_line()
+```
+
+
+```{r}
+par(mfrow = c(1, 2)); acf(diff(resid(lm1))); pacf(diff(resid(lm1)));
+```
+
+```{r}
+t = armasubsets(diff(lm1$residuals), 12, 12)
+plot(t)
+```
+
+```{r}
+fit1 = arima(oil, order = c(10, 1, 5),  fixed = c(0,0,0,NA,0,0,0,0,0,NA,NA,0,0,0,NA))
+par(mfrow = c(1, 2));plot(fit1, n.ahead = 20);plot(oil)
+
+test = predict(fit1, n.ahead = 10)
+
+x = length(fitted(fit1)):(length(fitted(fit1))+9)
+y = predict(fit1, n.ahead = 10)$pred
+upperbound = y + predict(fit1, n.ahead = 10)$se
+lowerbound = y - predict(fit1, n.ahead = 10)$se
+
+fit1.data = data.frame(x,y,upperbound,lowerbound)
+
+p = ggplot() + geom_line(data=oil.data, aes(x=time, y =price)) + geom_smooth(data = fit1.data, aes(x = x, y = y,ymax=upperbound, ymin=lowerbound), color = "RED",stat='identity') 
+
+ggplotly(p)
+```
+
+```{r}
+par(mfrow = c(1, 2), pty = 's');acf(fit1$residuals); pacf(fit1$residuals);
+plot.ts(fit1$residuals)
+tsdiag(fit1)
+```
+
+
+Anomaly Detection
+```{r}
+fitted = fitted(fit1)
+
+upper <- fitted + 2.5*sqrt(fit1$sigma2)
+lower <- fitted - 2.5*sqrt(fit1$sigma2)
+
+plot(oil, type="n", ylim=range(lower,upper))
+polygon(c(time(oil),rev(time(oil))), c(upper,rev(lower)), 
+   col=rgb(0,0,0.6,0.2), border=FALSE)
+lines(oil)
+#lines(fitted,col='red')
+out <- (oil < lower | oil > upper)
+points(time(oil)[out], oil[out], pch=19)
+```
+From the graph above there seems to be 7 anomalies and trying to research some of the anomalies gave me no results. I would have expected the anomolies to be at places like the spike around 50 but it seems like those are not considered anomalies. 
